@@ -2,6 +2,9 @@ import "dotenv/config";
 import { Client } from "@notionhq/client";
 import * as linkareer from "./linkareer.js";
 import * as wevity from "./wevity.js";
+import * as campuspick from "./campuspick.js";
+import * as yutopia from "./yutopia.js";
+import { enhance as geminiEnhance } from "./gemini.js";
 import { upsertContest, fetchExistingUrls, isLikelyContest } from "./notion-write.js";
 import type { Contest } from "./types.js";
 
@@ -13,35 +16,76 @@ interface Candidate {
   fetchDetail: () => Promise<Contest>;
 }
 
-async function collectCandidates(): Promise<Candidate[]> {
+async function collectCandidates(pages: number): Promise<Candidate[]> {
   const cands: Candidate[] = [];
 
-  // 링커리어 — 키워드 필터
-  const lk = await linkareer.fetchList(1);
-  for (const it of lk.items) {
-    if (!linkareer.isVideoContest(it.title)) continue;
-    cands.push({
-      source: "링커리어",
-      externalId: it.id,
-      url: linkareer.buildActivityUrl(it.id),
-      title: it.title,
-      fetchDetail: () => linkareer.fetchDetail(it.id),
-    });
+  // 링커리어 — 키워드 필터, 페이지 1..pages
+  let lkCount = 0;
+  for (let p = 1; p <= pages; p++) {
+    const { items } = await linkareer.fetchList(p);
+    if (items.length === 0) break;
+    for (const it of items) {
+      if (!linkareer.isVideoContest(it.title)) continue;
+      cands.push({
+        source: "링커리어",
+        externalId: it.id,
+        url: linkareer.buildActivityUrl(it.id),
+        title: it.title,
+        fetchDetail: () => linkareer.fetchDetail(it.id),
+      });
+      lkCount++;
+    }
   }
-  console.log(`[링커리어] 영상 키워드 통과: ${cands.filter((c) => c.source === "링커리어").length}건`);
+  console.log(`[링커리어] 영상 키워드 통과: ${lkCount}건 (page 1~${pages})`);
 
-  // 위비티 — 영상/UCC 카테고리로 이미 필터됨
-  const wv = await wevity.fetchList(1);
-  for (const it of wv.items) {
+  // 위비티 — 영상/UCC 카테고리 이미 필터됨
+  let wvCount = 0;
+  for (let p = 1; p <= pages; p++) {
+    const { items } = await wevity.fetchList(p);
+    if (items.length === 0) break;
+    for (const it of items) {
+      cands.push({
+        source: "위비티",
+        externalId: it.ix,
+        url: it.url,
+        title: it.title,
+        fetchDetail: () => wevity.fetchDetail(it.ix),
+      });
+      wvCount++;
+    }
+  }
+  console.log(`[위비티] 영상/UCC 카테고리: ${wvCount}건 (page 1~${pages})`);
+
+  // 캠퍼스픽 — 키워드 필터 (24개 최신만, page 인자 무시)
+  let cpCount = 0;
+  const { items: cpItems } = await campuspick.fetchList();
+  for (const it of cpItems) {
+    if (!campuspick.isVideoContest(it.title)) continue;
     cands.push({
-      source: "위비티",
-      externalId: it.ix,
+      source: "캠퍼스픽",
+      externalId: it.id,
       url: it.url,
       title: it.title,
-      fetchDetail: () => wevity.fetchDetail(it.ix),
+      fetchDetail: () => campuspick.fetchDetail(it.id),
     });
+    cpCount++;
   }
-  console.log(`[위비티] 영상/UCC 카테고리: ${cands.filter((c) => c.source === "위비티").length}건`);
+  console.log(`[캠퍼스픽] 영상 키워드 통과: ${cpCount}건 (최신 24)`);
+
+  // 유토피아 — 카테고리 160 + 키워드 "영상" 직접 URL (서버 필터됨)
+  let yuCount = 0;
+  const { items: yuItems } = await yutopia.fetchList();
+  for (const it of yuItems) {
+    cands.push({
+      source: "유토피아",
+      externalId: it.id,
+      url: it.url,
+      title: it.title,
+      fetchDetail: () => yutopia.fetchDetail(it.id),
+    });
+    yuCount++;
+  }
+  console.log(`[유토피아] 카테고리+키워드 통과: ${yuCount}건`);
 
   return cands;
 }
@@ -53,13 +97,15 @@ async function main() {
   const notion = new Client({ auth: token });
 
   const force = process.argv.includes("--force");
+  const noGemini = process.argv.includes("--no-gemini");
   const limit = parseInt(process.argv.find((a) => a.startsWith("--limit="))?.split("=")[1] ?? "0", 10);
+  const pages = parseInt(process.argv.find((a) => a.startsWith("--pages="))?.split("=")[1] ?? "3", 10);
 
   console.log("[notion] 기존 등록 URL 로드...");
   const existing = await fetchExistingUrls(notion, dbId);
   console.log(`  → ${existing.size}건\n`);
 
-  const all = await collectCandidates();
+  const all = await collectCandidates(pages);
   console.log(`\n[전체] 후보 ${all.length}건`);
 
   const news = force ? all : all.filter((c) => !existing.has(c.url));
@@ -73,17 +119,36 @@ async function main() {
   let created = 0;
   let updated = 0;
   let skipped_nonContest = 0;
+  let skipped_nonVideo = 0;
   let failed = 0;
   for (const cand of targets) {
     try {
       console.log(`[${cand.source}] ${cand.externalId} ${cand.title.slice(0, 50)}`);
-      const contest = await cand.fetchDetail();
+      let contest = await cand.fetchDetail();
       console.log(`  host=${contest.host} / close=${contest.closeAt} / prize=${contest.prizeKRW} / topic=${contest.topic}`);
+
+      // 시상 정보 없으면 1차 비공모전 가능성 → 스킵
       if (!isLikelyContest(contest)) {
         skipped_nonContest++;
-        console.log(`  → ⏭️  스킵 (시상 정보 없음 — 봉사·교육·모집 가능성)`);
+        console.log(`  → ⏭️  스킵 (시상 정보 없음)`);
         continue;
       }
+
+      // Gemini 보강 + 영상 공모전 여부 판정
+      if (!noGemini) {
+        const result = await geminiEnhance(contest);
+        if (result.usedLLM) {
+          contest = result.contest;
+          if (!result.isVideoContest) {
+            skipped_nonVideo++;
+            console.log(`  → ⏭️  스킵 (Gemini: ${result.reasoning})`);
+            continue;
+          } else {
+            console.log(`  ✨ Gemini OK: ${result.reasoning}`);
+          }
+        }
+      }
+
       const r = await upsertContest(notion, dbId, contest);
       if (r.created) created++;
       else updated++;
@@ -93,7 +158,9 @@ async function main() {
       console.error(`  ❌ ${e.message ?? e}`);
     }
   }
-  console.log(`\n✅ 완료 — created ${created} / updated ${updated} / 비공모전 스킵 ${skipped_nonContest} / failed ${failed}`);
+  console.log(
+    `\n✅ 완료 — created ${created} / updated ${updated} / 비공모전 ${skipped_nonContest} / 비영상 ${skipped_nonVideo} / failed ${failed}`,
+  );
 }
 
 main().catch((err) => {

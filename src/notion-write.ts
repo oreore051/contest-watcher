@@ -1,13 +1,17 @@
 import { Client } from "@notionhq/client";
 import type { Contest } from "./types.js";
 
+const UNKNOWN = "표기 없음";
+
 const truncate = (s: string | null, max = 1900): string => {
   if (!s) return "";
   return s.length > max ? s.slice(0, max - 1) + "…" : s;
 };
 
-const rt = (s: string | null) =>
-  s ? { rich_text: [{ text: { content: truncate(s) } }] } : { rich_text: [] };
+// rich_text 필드용 — null/empty면 "표기 없음" 마킹 (사용자 가시성).
+const rt = (s: string | null) => ({
+  rich_text: [{ text: { content: truncate(s) || UNKNOWN } }],
+});
 
 export function contestToProperties(c: Contest): Record<string, any> {
   return {
