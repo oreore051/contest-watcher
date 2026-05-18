@@ -5,7 +5,8 @@ import * as wevity from "./wevity.js";
 import * as campuspick from "./campuspick.js";
 import * as yutopia from "./yutopia.js";
 import { enhance as geminiEnhance } from "./gemini.js";
-import { upsertContest, fetchExistingUrls, isLikelyContest } from "./notion-write.js";
+import { upsertContest, syncRecommended, fetchExistingUrls, isLikelyContest } from "./notion-write.js";
+import { scoreContest, isRecommended, RECOMMEND_THRESHOLD } from "./scoring.js";
 import type { Contest } from "./types.js";
 
 interface Candidate {
@@ -93,6 +94,7 @@ async function collectCandidates(pages: number): Promise<Candidate[]> {
 async function main() {
   const token = process.env.NOTION_TOKEN;
   const dbId = process.env.DATABASE_ID;
+  const recDbId = process.env.RECOMMENDED_DATABASE_ID;
   if (!token || !dbId) throw new Error("NOTION_TOKEN/DATABASE_ID 누락");
   const notion = new Client({ auth: token });
 
@@ -118,6 +120,7 @@ async function main() {
 
   let created = 0;
   let updated = 0;
+  let recommended = 0;
   let skipped_nonContest = 0;
   let skipped_nonVideo = 0;
   let failed = 0;
@@ -152,14 +155,26 @@ async function main() {
       const r = await upsertContest(notion, dbId, contest);
       if (r.created) created++;
       else updated++;
-      console.log(`  → ${r.created ? "created" : "updated"}`);
+      console.log(`  → raw ${r.created ? "created" : "updated"}`);
+
+      // 추천 점수 계산 + recommended DB sync
+      if (recDbId) {
+        const score = scoreContest(contest);
+        if (isRecommended(score)) {
+          const rr = await syncRecommended(notion, recDbId, contest, score);
+          recommended++;
+          console.log(`  → ⭐ recommended ${score.total}점 ${rr.created ? "created" : "updated"}: ${score.reasons.slice(0, 3).join(" · ")}`);
+        } else {
+          console.log(`  → 추천 X (${score.total}점)`);
+        }
+      }
     } catch (e: any) {
       failed++;
       console.error(`  ❌ ${e.message ?? e}`);
     }
   }
   console.log(
-    `\n✅ 완료 — created ${created} / updated ${updated} / 비공모전 ${skipped_nonContest} / 비영상 ${skipped_nonVideo} / failed ${failed}`,
+    `\n✅ 완료 — created ${created} / updated ${updated} / ⭐ recommended ${recommended} / 비공모전 ${skipped_nonContest} / 비영상 ${skipped_nonVideo} / failed ${failed}`,
   );
 }
 

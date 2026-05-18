@@ -1,5 +1,6 @@
 import { Client } from "@notionhq/client";
 import type { Contest } from "./types.js";
+import type { Score } from "./scoring.js";
 
 const UNKNOWN = "표기 없음";
 
@@ -118,6 +119,35 @@ export async function findByUrl(notion: Client, dbId: string, url: string): Prom
  */
 export function isLikelyContest(c: Contest): boolean {
   return c.prizeKRW != null || !!c.prizeScale;
+}
+
+/**
+ * recommended_database로 동기화. 점수 ≥ 임계값 통과한 공모전만.
+ * raw와 동일 URL이면 update, 아니면 create.
+ */
+export async function syncRecommended(
+  notion: Client,
+  recDbId: string,
+  c: Contest,
+  score: Score,
+): Promise<{ id: string; created: boolean }> {
+  const properties = contestToProperties(c);
+  properties["추천 점수"] = { number: score.total };
+  properties["추천 사유"] = {
+    rich_text: [{ text: { content: score.reasons.join(" · ").slice(0, 1900) } }],
+  };
+
+  const existing = await findByUrl(notion, recDbId, c.url);
+  if (existing) {
+    await notion.pages.update({ page_id: existing, properties });
+    return { id: existing, created: false };
+  }
+  // 추천 DB에는 본문 블록 첨부 안 함 (raw에만 있으면 충분, 노션 페이지 빠르게 열림)
+  const page = await notion.pages.create({
+    parent: { database_id: recDbId },
+    properties,
+  });
+  return { id: page.id, created: true };
 }
 
 export async function upsertContest(notion: Client, dbId: string, c: Contest): Promise<{ id: string; created: boolean }> {
