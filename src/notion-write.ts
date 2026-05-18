@@ -104,6 +104,77 @@ function buildBodyChildren(detailText: string | null): any[] {
   ];
 }
 
+const SCHEDULE_TITLE_PREFIX = "🎬 ";
+
+/**
+ * "일정" DB로 sync — recommended에서 ⭐관심 체크된 페이지의 마감일을 캘린더 일정으로.
+ * 일정 DB 컬럼: 이름(title), 날짜(date)만 사용. 추가 컬럼 X.
+ * Dedup: 제목 정확 매칭 (🎬 prefix + 공모전 제목).
+ */
+export async function syncScheduleEntry(
+  notion: Client,
+  scheduleDbId: string,
+  c: Contest,
+): Promise<{ id: string; created: boolean; skipped?: boolean }> {
+  if (!c.closeAt) return { id: "", created: false, skipped: true };
+  const title = SCHEDULE_TITLE_PREFIX + c.title;
+
+  const res: any = await notion.databases.query({
+    database_id: scheduleDbId,
+    filter: { property: "이름", title: { equals: title } },
+    page_size: 1,
+  });
+  const properties = {
+    이름: { title: [{ text: { content: title.slice(0, 200) } }] },
+    날짜: { date: { start: c.closeAt } },
+  } as any;
+
+  if (res.results[0]) {
+    const id = res.results[0].id;
+    await notion.pages.update({ page_id: id, properties });
+    return { id, created: false };
+  }
+  const page = await notion.pages.create({
+    parent: { database_id: scheduleDbId },
+    properties,
+    icon: emojiIcon("🎬"),
+  });
+  return { id: page.id, created: true };
+}
+
+/**
+ * "일정" DB에서 더 이상 ⭐관심 아닌 공모전 일정을 정리(삭제).
+ * 매번 cron에서: 현재 ⭐관심 set 만들고, 일정 DB의 🎬 prefix 항목 중 이 set에 없는 건 휴지통.
+ */
+export async function cleanupSchedule(
+  notion: Client,
+  scheduleDbId: string,
+  currentTitles: Set<string>,
+): Promise<number> {
+  let removed = 0;
+  let cursor: string | undefined;
+  do {
+    const res: any = await notion.databases.query({
+      database_id: scheduleDbId,
+      filter: { property: "이름", title: { starts_with: SCHEDULE_TITLE_PREFIX } },
+      start_cursor: cursor,
+      page_size: 100,
+    });
+    for (const page of res.results) {
+      if (page.in_trash || page.archived) continue;
+      const t = page.properties?.["이름"]?.title?.[0]?.plain_text ?? "";
+      if (!currentTitles.has(t)) {
+        await notion.pages.update({ page_id: page.id, in_trash: true } as any);
+        removed++;
+      }
+    }
+    cursor = res.has_more ? res.next_cursor ?? undefined : undefined;
+  } while (cursor);
+  return removed;
+}
+
+export const scheduleTitleOf = (c: Contest) => SCHEDULE_TITLE_PREFIX + c.title;
+
 export async function findByUrl(notion: Client, dbId: string, url: string): Promise<string | null> {
   const res = await notion.databases.query({
     database_id: dbId,

@@ -5,9 +5,17 @@ import * as wevity from "./wevity.js";
 import * as campuspick from "./campuspick.js";
 import * as yutopia from "./yutopia.js";
 import { enhance as geminiEnhance } from "./gemini.js";
-import { upsertContest, syncRecommended, fetchExistingUrls, isLikelyContest } from "./notion-write.js";
-import { scoreContest, isRecommended, RECOMMEND_THRESHOLD } from "./scoring.js";
+import {
+  upsertContest,
+  syncRecommended,
+  syncScheduleEntry,
+  cleanupSchedule,
+  scheduleTitleOf,
+  fetchExistingUrls,
+  isLikelyContest,
+} from "./notion-write.js";
 import type { Contest } from "./types.js";
+import { scoreContest, isRecommended, RECOMMEND_THRESHOLD } from "./scoring.js";
 
 interface Candidate {
   source: string;
@@ -91,10 +99,64 @@ async function collectCandidates(pages: number): Promise<Candidate[]> {
   return cands;
 }
 
+/**
+ * recommended DB에서 ⭐관심=true 페이지 → "일정" DB로 sync.
+ * 매 cron 끝에 호출. 체크 해제된 건 일정에서 제거.
+ */
+async function syncScheduleFromInterests(notion: Client, recDbId: string, scheduleDbId: string) {
+  const currentTitles = new Set<string>();
+  let added = 0;
+  let cursor: string | undefined;
+  do {
+    const res: any = await notion.databases.query({
+      database_id: recDbId,
+      filter: {
+        and: [
+          { property: "⭐관심", checkbox: { equals: true } },
+          { property: "마감일", date: { is_not_empty: true } },
+        ],
+      },
+      start_cursor: cursor,
+      page_size: 100,
+    });
+    for (const p of res.results) {
+      if (p.in_trash || p.archived) continue;
+      const props = p.properties;
+      const contest: Contest = {
+        source: (props["소스"]?.select?.name as any) ?? "링커리어",
+        externalId: "",
+        url: props["원문"]?.url ?? "",
+        title: props["제목"]?.title?.[0]?.plain_text ?? "",
+        host: null,
+        closeAt: props["마감일"]?.date?.start ?? null,
+        prizeKRW: null,
+        prizeScale: null,
+        eligibility: null,
+        topic: null,
+        videoLength: null,
+        submitMethod: null,
+        postSelectionDuty: null,
+        awardSamplesURL: null,
+        status: "모집중",
+        detailText: null,
+        thumbnailURL: null,
+      };
+      if (!contest.title || !contest.closeAt) continue;
+      const r = await syncScheduleEntry(notion, scheduleDbId, contest);
+      if (r.created) added++;
+      currentTitles.add(scheduleTitleOf(contest));
+    }
+    cursor = res.has_more ? res.next_cursor ?? undefined : undefined;
+  } while (cursor);
+  const removed = await cleanupSchedule(notion, scheduleDbId, currentTitles);
+  return { added, removed, total: currentTitles.size };
+}
+
 async function main() {
   const token = process.env.NOTION_TOKEN;
   const dbId = process.env.DATABASE_ID;
   const recDbId = process.env.RECOMMENDED_DATABASE_ID;
+  const scheduleDbId = process.env.SCHEDULE_DATABASE_ID;
   if (!token || !dbId) throw new Error("NOTION_TOKEN/DATABASE_ID 누락");
   const notion = new Client({ auth: token });
 
@@ -176,6 +238,13 @@ async function main() {
   console.log(
     `\n✅ 완료 — created ${created} / updated ${updated} / ⭐ recommended ${recommended} / 비공모전 ${skipped_nonContest} / 비영상 ${skipped_nonVideo} / failed ${failed}`,
   );
+
+  // ⭐관심 체크된 공모전 → "일정" DB로 sync
+  if (recDbId && scheduleDbId) {
+    console.log(`\n[일정] ⭐관심 → 일정 DB sync...`);
+    const s = await syncScheduleFromInterests(notion, recDbId, scheduleDbId);
+    console.log(`  → 일정 ${s.total}건 (신규 ${s.added} · 제거 ${s.removed})`);
+  }
 }
 
 main().catch((err) => {
