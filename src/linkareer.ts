@@ -1,4 +1,5 @@
 import type { Contest } from "./types.js";
+import { deriveStatus } from "./types.js";
 import {
   stripHTML,
   extractVideoLength,
@@ -100,6 +101,8 @@ export async function fetchDetail(id: string): Promise<Contest> {
   const categories = (resolveRef(state, act.categories) ?? []) as Array<{ name: string }>;
   const targets = (resolveRef(state, act.targets) ?? []) as Array<{ name?: string }>;
   const applyTypes = (resolveRef(state, act.applyTypes) ?? []) as Array<{ name?: string }>;
+  const thumbnailObj = resolveRef(state, act.thumbnailImage) as { url?: string } | null;
+  const thumbnailURL = thumbnailObj?.url ?? null;
   const detailTextObj = resolveRef(state, act.detailText) as { text?: string } | null;
   const rawBody = detailTextObj?.text ?? null;
   const bodyText = rawBody ? stripHTML(rawBody) : null;
@@ -136,8 +139,9 @@ export async function fetchDetail(id: string): Promise<Contest> {
     submitMethod: submitMethodFromBody ?? (applyTypes.map((t) => t.name).filter(Boolean).join(", ") || null),
     postSelectionDuty: null,
     awardSamplesURL: act.youtubeURL ?? null,
-    status: "모집중",
+    status: deriveStatus(closeAt),
     detailText: bodyText,
+    thumbnailURL,
   };
 }
 

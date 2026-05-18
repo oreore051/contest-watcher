@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
 import type { Contest } from "./types.js";
+import { deriveStatus } from "./types.js";
 import {
   stripHTML,
   extractVideoLength,
@@ -64,6 +65,7 @@ export async function fetchDetail(id: string): Promise<Contest> {
 
   const title = metaContent($, "og:title").replace(/\s*\|\s*.*$/, "").trim();
   const ogDesc = metaContent($, "og:description");
+  const thumbnailURL = metaContent($, "og:image") || null;
 
   // 본문 영역 — eco/program 디테일에서 description 클래스 또는 description-like div
   // 안 찾히면 og:description만이라도 사용
@@ -108,7 +110,8 @@ export async function fetchDetail(id: string): Promise<Contest> {
     submitMethod,
     postSelectionDuty: null,
     awardSamplesURL: null,
-    status: "모집중",
+    status: deriveStatus(closeAt),
     detailText: bodyText || null,
+    thumbnailURL,
   };
 }

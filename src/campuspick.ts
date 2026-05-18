@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
 import type { Contest } from "./types.js";
+import { deriveStatus } from "./types.js";
 import {
   stripHTML,
   extractVideoLength,
@@ -79,6 +80,12 @@ export async function fetchDetail(id: string): Promise<Contest> {
   const submitMethod = extractSubmitMethod(bodyText);
   const prizeKRW = prizeKRWStructured ?? extractMaxPrizeFromBody(bodyText);
 
+  // 캠퍼스픽 이미지는 CDN 경로의 파일명
+  const imageFile = (a.image || a.image_thumb) as string | undefined;
+  const thumbnailURL = imageFile
+    ? (imageFile.startsWith("http") ? imageFile : `https://cf-tabs-image.campuspick.com/activity/${imageFile}`)
+    : null;
+
   return {
     source: "캠퍼스픽",
     externalId: id,
@@ -94,7 +101,8 @@ export async function fetchDetail(id: string): Promise<Contest> {
     submitMethod,
     postSelectionDuty: null,
     awardSamplesURL: a.website || null,
-    status: "모집중",
+    status: deriveStatus(closeAt),
     detailText: bodyText || null,
+    thumbnailURL,
   };
 }

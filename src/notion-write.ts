@@ -125,6 +125,13 @@ export function isLikelyContest(c: Contest): boolean {
  * recommended_database로 동기화. 점수 ≥ 임계값 통과한 공모전만.
  * raw와 동일 URL이면 update, 아니면 create.
  */
+function iconForScore(score: number): string {
+  if (score >= 95) return "🏆";
+  if (score >= 85) return "⭐";
+  if (score >= 75) return "👍";
+  return "📋";
+}
+
 export async function syncRecommended(
   notion: Client,
   recDbId: string,
@@ -137,30 +144,49 @@ export async function syncRecommended(
     rich_text: [{ text: { content: score.reasons.join(" · ").slice(0, 1900) } }],
   };
 
+  const cover = buildCover(c);
+  const icon = emojiIcon(iconForScore(score.total));
+
   const existing = await findByUrl(notion, recDbId, c.url);
   if (existing) {
-    await notion.pages.update({ page_id: existing, properties });
+    await notion.pages.update({ page_id: existing, properties, cover, icon });
     return { id: existing, created: false };
   }
-  // 추천 DB에는 본문 블록 첨부 안 함 (raw에만 있으면 충분, 노션 페이지 빠르게 열림)
   const page = await notion.pages.create({
     parent: { database_id: recDbId },
     properties,
+    cover,
+    icon,
   });
   return { id: page.id, created: true };
 }
 
+function buildCover(c: Contest): any {
+  if (!c.thumbnailURL) return undefined;
+  // 노션이 못 가져오는 도메인이 있을 수 있어 https 만 통과
+  if (!c.thumbnailURL.startsWith("https://")) return undefined;
+  return { type: "external", external: { url: c.thumbnailURL } };
+}
+
+function emojiIcon(emoji: string): any {
+  return { type: "emoji", emoji };
+}
+
 export async function upsertContest(notion: Client, dbId: string, c: Contest): Promise<{ id: string; created: boolean }> {
   const properties = contestToProperties(c);
+  const cover = buildCover(c);
+  const icon = emojiIcon("🎬");
   const existing = await findByUrl(notion, dbId, c.url);
   if (existing) {
-    await notion.pages.update({ page_id: existing, properties });
+    await notion.pages.update({ page_id: existing, properties, cover, icon });
     return { id: existing, created: false };
   }
   const children = buildBodyChildren(c.detailText);
   const page = await notion.pages.create({
     parent: { database_id: dbId },
     properties,
+    cover,
+    icon,
     children: children as any,
   });
   return { id: page.id, created: true };

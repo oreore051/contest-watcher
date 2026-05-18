@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
 import type { Contest } from "./types.js";
+import { deriveStatus } from "./types.js";
 import {
   stripHTML,
   extractVideoLength,
@@ -56,6 +57,7 @@ export async function fetchDetail(ix: string): Promise<Contest> {
   const $ = cheerio.load(html);
 
   const ogTitle = $('meta[property="og:title"]').attr("content") || "";
+  const thumbnailURL = $('meta[property="og:image"]').attr("content") || null;
   const title = ogTitle.replace(/\s*\|\s*공모전 대외활동.*$/, "").trim() ||
     $("h2").first().text().trim();
 
@@ -117,7 +119,8 @@ export async function fetchDetail(ix: string): Promise<Contest> {
     submitMethod,
     postSelectionDuty: null,
     awardSamplesURL: null,
-    status: "모집중",
+    status: deriveStatus(closeAt),
     detailText: bodyText || null,
+    thumbnailURL,
   };
 }
