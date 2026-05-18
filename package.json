@@ -1,0 +1,22 @@
+{
+  "name": "contest-watcher",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "영상공모전 4개 사이트 자동 수집 → Notion",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "scrape": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@notionhq/client": "^2.3.0",
+    "cheerio": "^1.0.0",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.2"
+  }
+}
