@@ -7,6 +7,7 @@ import {
   extractPrizeScale,
   extractSubmitMethod,
   extractMaxPrizeFromBody,
+  extractTopic,
   parseKRW,
 } from "./extract.js";
 
@@ -93,7 +94,7 @@ export async function fetchDetail(ix: string): Promise<Contest> {
     parseKRW(info["총 상금"]) ??
     null;
 
-  const topic = info["분야"] || null;
+  const formatFromSite = info["분야"] || null;
   const eligibility = info["응모대상"] ? `대상: ${info["응모대상"]}` : null;
   const homepage = info["홈페이지URL"] || null;
 
@@ -102,6 +103,7 @@ export async function fetchDetail(ix: string): Promise<Contest> {
   const videoLength = extractVideoLength(bodyText);
   const prizeScale = extractPrizeScale(bodyText);
   const submitMethod = extractSubmitMethod(bodyText);
+  const topicFromBody = extractTopic(bodyText);
   const prizeKRWFinal = prizeKRW ?? extractMaxPrizeFromBody(bodyText);
 
   return {
@@ -114,7 +116,8 @@ export async function fetchDetail(ix: string): Promise<Contest> {
     prizeKRW: prizeKRWFinal,
     prizeScale,
     eligibility,
-    topic,
+    topic: topicFromBody,
+    format: formatFromSite,
     videoLength,
     submitMethod,
     postSelectionDuty: null,

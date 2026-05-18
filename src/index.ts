@@ -133,6 +133,7 @@ async function syncScheduleFromInterests(notion: Client, recDbId: string, schedu
         prizeScale: null,
         eligibility: null,
         topic: null,
+        format: null,
         videoLength: null,
         submitMethod: null,
         postSelectionDuty: null,

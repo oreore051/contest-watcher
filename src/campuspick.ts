@@ -7,6 +7,7 @@ import {
   extractPrizeScale,
   extractSubmitMethod,
   extractMaxPrizeFromBody,
+  extractTopic,
 } from "./extract.js";
 import { isVideoContest } from "./linkareer.js"; // 키워드 셋 공유
 
@@ -78,6 +79,7 @@ export async function fetchDetail(id: string): Promise<Contest> {
   const videoLength = extractVideoLength(bodyText);
   const prizeScale = extractPrizeScale(bodyText);
   const submitMethod = extractSubmitMethod(bodyText);
+  const topicFromBody = extractTopic(bodyText);
   const prizeKRW = prizeKRWStructured ?? extractMaxPrizeFromBody(bodyText);
 
   // 캠퍼스픽 이미지는 CDN 경로의 파일명
@@ -95,8 +97,9 @@ export async function fetchDetail(id: string): Promise<Contest> {
     closeAt,
     prizeKRW,
     prizeScale,
-    eligibility: null, // 캠퍼스픽 detail JSON엔 명확한 대상 필드 없음 — 본문에서 추출 가능하나 MVP는 null
-    topic: null, // 카테고리 ID만 있어서 라벨 매핑 필요 — MVP는 null
+    eligibility: null,
+    topic: topicFromBody,
+    format: null, // 캠퍼스픽 카테고리 ID만 있어서 라벨 매핑 필요 — MVP는 null
     videoLength,
     submitMethod,
     postSelectionDuty: null,

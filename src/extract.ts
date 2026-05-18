@@ -162,6 +162,23 @@ export function parseKRW(s: string | null | undefined): number | null {
   return total > 0 ? total : null;
 }
 
+export function extractTopic(text: string, max = 400): string | null {
+  const section = findSection(text, [
+    "공모주제",
+    "공모 주제",
+    "주제",
+    "공모내용",
+    "공모 내용",
+    "주제 및 내용",
+    "공모분야",
+    "공모 분야",
+  ]);
+  if (!section) return null;
+  const trimmed = section.trim();
+  if (trimmed.length < 3) return null;
+  return trimmed.length > max ? trimmed.slice(0, max - 1) + "…" : trimmed;
+}
+
 export function extractSubmitMethod(text: string, max = 600): string | null {
   const section = findSection(text, [
     "접수방법",

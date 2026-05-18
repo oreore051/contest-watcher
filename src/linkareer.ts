@@ -6,6 +6,7 @@ import {
   extractPrizeScale,
   extractSubmitMethod,
   extractMaxPrizeFromBody,
+  extractTopic,
 } from "./extract.js";
 
 const BASE = "https://linkareer.com";
@@ -109,6 +110,7 @@ export async function fetchDetail(id: string): Promise<Contest> {
   const videoLength = bodyText ? extractVideoLength(bodyText) : null;
   const prizeScaleFromBody = bodyText ? extractPrizeScale(bodyText) : null;
   const submitMethodFromBody = bodyText ? extractSubmitMethod(bodyText) : null;
+  const topicFromBody = bodyText ? extractTopic(bodyText) : null;
 
   const closeAt = act.recruitCloseAt
     ? new Date(act.recruitCloseAt).toISOString().slice(0, 10)
@@ -134,7 +136,8 @@ export async function fetchDetail(id: string): Promise<Contest> {
     prizeKRW,
     prizeScale: prizeScaleFromBody ?? act.additionalBenefit ?? (act.recruitScale && Number(act.recruitScale) > 0 ? `${act.recruitScale}명` : null),
     eligibility: eligibilityParts.length ? eligibilityParts.join(" / ") : null,
-    topic: categories.map((c) => c.name).filter(Boolean).join(", ") || null,
+    topic: topicFromBody,
+    format: categories.map((c) => c.name).filter(Boolean).join(", ") || null,
     videoLength,
     submitMethod: submitMethodFromBody ?? (applyTypes.map((t) => t.name).filter(Boolean).join(", ") || null),
     postSelectionDuty: null,

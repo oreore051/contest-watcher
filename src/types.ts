@@ -10,7 +10,8 @@ export interface Contest {
   prizeKRW: number | null;
   prizeScale: string | null;
   eligibility: string | null;
-  topic: string | null;
+  topic: string | null; // 본문에서 추출한 공모 주제 (예: "어린이 의약정보 홍보 콘텐츠")
+  format: string | null; // 사이트 카테고리 (예: "영상/UCC/사진")
   videoLength: string | null;
   submitMethod: string | null;
   postSelectionDuty: string | null;

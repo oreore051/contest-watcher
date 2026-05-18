@@ -24,6 +24,7 @@ export function contestToProperties(c: Contest): Record<string, any> {
     시상규모: rt(c.prizeScale),
     참가자격: rt(c.eligibility),
     주제: rt(c.topic),
+    형식: rt(c.format),
     영상길이: rt(c.videoLength),
     제출방식: rt(c.submitMethod),
     "선정후 활동": rt(c.postSelectionDuty),

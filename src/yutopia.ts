@@ -7,6 +7,7 @@ import {
   extractPrizeScale,
   extractSubmitMethod,
   extractMaxPrizeFromBody,
+  extractTopic,
 } from "./extract.js";
 
 const BASE = "https://yutopia.yu.ac.kr";
@@ -93,6 +94,7 @@ export async function fetchDetail(id: string): Promise<Contest> {
   const videoLength = extractVideoLength(bodyText);
   const prizeScale = extractPrizeScale(bodyText);
   const submitMethod = extractSubmitMethod(bodyText);
+  const topicFromBody = extractTopic(bodyText);
   const prizeKRW = extractMaxPrizeFromBody(bodyText);
 
   return {
@@ -105,7 +107,8 @@ export async function fetchDetail(id: string): Promise<Contest> {
     prizeKRW,
     prizeScale,
     eligibility: "영남대 재학생", // 교내 공모전이라 기본값
-    topic: null,
+    topic: topicFromBody,
+    format: "교내 영상 공모전",
     videoLength,
     submitMethod,
     postSelectionDuty: null,
