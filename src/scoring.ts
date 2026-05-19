@@ -101,6 +101,39 @@ export function scoreContest(c: Contest): Score {
     total += 8;
   }
 
+  const allText = [c.title, c.topic, c.host, c.eligibility]
+    .filter(Boolean)
+    .join(" ");
+  const isDaeguContext = /대구|경북|영남대|TK권/.test(allText);
+
+  // 8. 대구·경북 가산 (+15)
+  if (isDaeguContext) {
+    total += 15;
+    reasons.push(`🎯 대구·경북`);
+  }
+
+  // 9. AI 영상 페널티 / 일반 영상 가산
+  if (c.aiVideo === "일반") {
+    total += 8;
+    reasons.push(`🎥 일반 영상`);
+  } else if (c.aiVideo === "AI") {
+    total -= 10;
+    reasons.push(`🤖 AI 영상`);
+  }
+
+  // 10. 타 지역 홍보공모전 페널티 (-15)
+  const OTHER_REGION =
+    /서울|부산|인천|광주|대전|울산|세종|경기|강원|충북|충청북|충남|충청남|전북|전라북|전남|전라남|제주/;
+  const PROMO_KEYWORDS = /홍보|관광|축제|시정|도정|특산/;
+  if (
+    !isDaeguContext &&
+    OTHER_REGION.test(allText) &&
+    PROMO_KEYWORDS.test(allText)
+  ) {
+    total -= 15;
+    reasons.push(`📉 타 지역 홍보`);
+  }
+
   return { total, reasons };
 }
 
