@@ -186,12 +186,26 @@ async function main() {
   let recommended = 0;
   let skipped_nonContest = 0;
   let skipped_nonVideo = 0;
+  let skipped_old = 0;
   let failed = 0;
+  const today = new Date().toISOString().slice(0, 10);
   for (const cand of targets) {
     try {
       console.log(`[${cand.source}] ${cand.externalId} ${cand.title.slice(0, 50)}`);
       let contest = await cand.fetchDetail();
       console.log(`  host=${contest.host} / close=${contest.closeAt} / prize=${contest.prizeKRW} / topic=${contest.topic}`);
+
+      // 마감일 없음 / 과거 — 옛 데이터 (특히 유토피아 카테고리 페이지가 과거 항목까지 노출)
+      if (!contest.closeAt) {
+        skipped_old++;
+        console.log(`  → ⏭️  스킵 (마감일 없음)`);
+        continue;
+      }
+      if (contest.closeAt < today) {
+        skipped_old++;
+        console.log(`  → ⏭️  스킵 (이미 마감: ${contest.closeAt})`);
+        continue;
+      }
 
       // 시상 정보 없으면 1차 비공모전 가능성 → 스킵
       if (!isLikelyContest(contest)) {
@@ -237,7 +251,7 @@ async function main() {
     }
   }
   console.log(
-    `\n✅ 완료 — created ${created} / updated ${updated} / ⭐ recommended ${recommended} / 비공모전 ${skipped_nonContest} / 비영상 ${skipped_nonVideo} / failed ${failed}`,
+    `\n✅ 완료 — created ${created} / updated ${updated} / ⭐ recommended ${recommended} / 마감지남 ${skipped_old} / 비공모전 ${skipped_nonContest} / 비영상 ${skipped_nonVideo} / failed ${failed}`,
   );
 
   // ⭐관심 체크된 공모전 → "일정" DB로 sync

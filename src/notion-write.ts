@@ -119,15 +119,30 @@ export async function syncScheduleEntry(
 ): Promise<{ id: string; created: boolean; skipped?: boolean }> {
   if (!c.closeAt) return { id: "", created: false, skipped: true };
   const title = SCHEDULE_TITLE_PREFIX + c.title;
+  const today = new Date().toISOString().slice(0, 10);
 
   const res: any = await notion.databases.query({
     database_id: scheduleDbId,
     filter: { property: "이름", title: { equals: title } },
     page_size: 1,
   });
+
+  // 범위 = (별 누른 날) ~ 마감일.
+  // 기존 항목의 start를 유지하되, 옛 포맷(start=마감일·end 없음)이면 오늘로 마이그레이션.
+  const existing = res.results[0]?.properties?.["날짜"]?.date;
+  const existingStart: string | undefined = existing?.start;
+  const existingEnd: string | undefined = existing?.end ?? undefined;
+  const isLegacyPoint = !!existingStart && !existingEnd && existingStart === c.closeAt;
+  let startDate = !existingStart || isLegacyPoint ? today : existingStart;
+  if (startDate > c.closeAt) startDate = c.closeAt; // 방어: 시작이 끝 뒤면 한 점
+  const dateValue =
+    startDate === c.closeAt
+      ? { start: c.closeAt }
+      : { start: startDate, end: c.closeAt };
+
   const properties = {
     이름: { title: [{ text: { content: title.slice(0, 200) } }] },
-    날짜: { date: { start: c.closeAt } },
+    날짜: { date: dateValue },
   } as any;
 
   if (res.results[0]) {
