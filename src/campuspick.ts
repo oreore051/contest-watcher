@@ -8,6 +8,8 @@ import {
   extractSubmitMethod,
   extractMaxPrizeFromBody,
   extractTopic,
+  classifyVideoForm,
+  classifyAiVideo,
 } from "./extract.js";
 import { isVideoContest } from "./linkareer.js"; // 키워드 셋 공유
 
@@ -99,7 +101,8 @@ export async function fetchDetail(id: string): Promise<Contest> {
     prizeScale,
     eligibility: null,
     topic: topicFromBody,
-    format: null, // 캠퍼스픽 카테고리 ID만 있어서 라벨 매핑 필요 — MVP는 null
+    videoForm: classifyVideoForm({ title, body: bodyText, videoLength }),
+    aiVideo: classifyAiVideo({ title, topic: topicFromBody, body: bodyText }),
     videoLength,
     submitMethod,
     postSelectionDuty: null,

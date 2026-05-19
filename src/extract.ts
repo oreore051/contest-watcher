@@ -1,3 +1,5 @@
+import type { VideoForm, AIVideo } from "./types.js";
+
 /**
  * 사이트 어댑터 공통 — HTML 본문에서 자유 텍스트 필드 추출
  */
@@ -229,6 +231,84 @@ export function extractPrizeScale(text: string, max = 600): string | null {
   const trimmed = section.trim();
   if (trimmed.length < 3) return null; // "-" 같은 잡음 컷
   return trimmed.length > max ? trimmed.slice(0, max - 1) + "…" : trimmed;
+}
+
+// 영상 길이 문자열에서 최대 초(seconds) 파싱.
+// "60초 이내", "3분", "1분 30초", "5 - 30초 이내", "1분 ~ 5분" 모두 대응.
+// 범위면 최대값. 못 파싱하면 null.
+export function parseMaxSeconds(s: string | null | undefined): number | null {
+  if (!s) return null;
+  let max = 0;
+  let matched = false;
+  // "Nm Ns" or "N분 N초" 토큰
+  const tokenRe = /(\d+)\s*분(?:\s*(\d+)\s*초)?|(\d+)\s*초/g;
+  let m: RegExpExecArray | null;
+  while ((m = tokenRe.exec(s)) !== null) {
+    let secs = 0;
+    if (m[1] != null) secs = parseInt(m[1], 10) * 60 + (m[2] ? parseInt(m[2], 10) : 0);
+    else if (m[3] != null) secs = parseInt(m[3], 10);
+    if (secs > max) max = secs;
+    matched = true;
+  }
+  if (matched) return max;
+  // 단위 없는 범위 — "5 - 30초" 패턴의 첫 숫자도 잡힘. 마지막에 폴백
+  const fallback = s.match(/(\d+)\s*[-~–]\s*(\d+)\s*([분초])/);
+  if (fallback) {
+    const unit = fallback[3] === "분" ? 60 : 1;
+    return parseInt(fallback[2], 10) * unit;
+  }
+  return null;
+}
+
+const SHORTS_KW = /(쇼츠|숏폼|short\s*form|shorts|릴스|reels|틱톡|tiktok|세로\s*영상)/i;
+const LONG_KW = /(장편|단편\s*영화|뮤직비디오|다큐|광고\s*영상|드라마|극영화|러닝타임)/i;
+
+/**
+ * 영상 형태 판정 — 쇼츠/일반/혼합/미상.
+ * 1) 본문/제목 키워드 (쇼츠/숏폼 vs 장편/다큐)
+ * 2) videoLength 보조 (≤60초 → 쇼츠, >90초 → 일반)
+ * 둘 다 강한 신호면 혼합. 아무 신호도 없으면 미상.
+ */
+export function classifyVideoForm(opts: {
+  title: string;
+  body: string | null;
+  videoLength: string | null;
+}): VideoForm {
+  const haystack = `${opts.title}\n${opts.body ?? ""}`;
+  const hasShorts = SHORTS_KW.test(haystack);
+  const hasLong = LONG_KW.test(haystack);
+
+  let lenSays: "쇼츠" | "일반" | null = null;
+  const sec = parseMaxSeconds(opts.videoLength);
+  if (sec != null) {
+    if (sec <= 60) lenSays = "쇼츠";
+    else if (sec >= 90) lenSays = "일반";
+  }
+
+  // 명시적 둘 다 있으면 혼합
+  if (hasShorts && hasLong) return "혼합";
+  if (hasShorts && lenSays === "일반") return "혼합";
+  if (hasLong && lenSays === "쇼츠") return "혼합";
+
+  if (hasShorts || lenSays === "쇼츠") return "쇼츠";
+  if (hasLong || lenSays === "일반") return "일반";
+  return "미상";
+}
+
+const AI_KW = /(AI\b|A\.\s*I\.|인공지능|생성형|generative|GPT|ChatGPT|stable\s*diffusion|midjourney|머신러닝|machine\s*learning|딥러닝|LLM|챗봇|AI\s*영상|AI\s*콘텐츠|sora\b|veo\b|runway\s*ml)/i;
+
+/**
+ * AI 영상 여부 — 키워드 있으면 AI, 없으면 미상 (Gemini가 최종 판단).
+ * 1차 회수율 우선 — 키워드 잡히면 AI로 강하게 마킹, 아니면 미상으로 두고 LLM에 위임.
+ */
+export function classifyAiVideo(opts: {
+  title: string;
+  topic: string | null;
+  body: string | null;
+}): AIVideo {
+  const haystack = `${opts.title}\n${opts.topic ?? ""}\n${opts.body ?? ""}`;
+  if (AI_KW.test(haystack)) return "AI";
+  return "미상";
 }
 
 // 1등 상금 라인을 식별하는 라벨

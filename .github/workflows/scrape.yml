@@ -5,6 +5,11 @@ on:
     # KST 매일 오전 9시 = UTC 0시
     - cron: "0 0 * * *"
   workflow_dispatch: # 수동 실행 버튼
+    inputs:
+      force:
+        description: "이미 등록된 URL도 재처리 (--force)"
+        type: boolean
+        default: false
 
 jobs:
   scrape:
@@ -29,4 +34,4 @@ jobs:
           RECOMMENDED_DATABASE_ID: ${{ secrets.RECOMMENDED_DATABASE_ID }}
           SCHEDULE_DATABASE_ID: ${{ secrets.SCHEDULE_DATABASE_ID }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-        run: npm run scrape -- --pages=3
+        run: npm run scrape -- --pages=3 ${{ inputs.force && '--force' || '' }}

@@ -7,6 +7,8 @@ import {
   extractSubmitMethod,
   extractMaxPrizeFromBody,
   extractTopic,
+  classifyVideoForm,
+  classifyAiVideo,
 } from "./extract.js";
 
 const BASE = "https://linkareer.com";
@@ -99,7 +101,6 @@ export async function fetchDetail(id: string): Promise<Contest> {
   ) as any;
   if (!act) throw new Error(`Activity ${id} not found in detail page state`);
 
-  const categories = (resolveRef(state, act.categories) ?? []) as Array<{ name: string }>;
   const targets = (resolveRef(state, act.targets) ?? []) as Array<{ name?: string }>;
   const applyTypes = (resolveRef(state, act.applyTypes) ?? []) as Array<{ name?: string }>;
   const thumbnailObj = resolveRef(state, act.thumbnailImage) as { url?: string } | null;
@@ -137,7 +138,8 @@ export async function fetchDetail(id: string): Promise<Contest> {
     prizeScale: prizeScaleFromBody ?? act.additionalBenefit ?? (act.recruitScale && Number(act.recruitScale) > 0 ? `${act.recruitScale}명` : null),
     eligibility: eligibilityParts.length ? eligibilityParts.join(" / ") : null,
     topic: topicFromBody,
-    format: categories.map((c) => c.name).filter(Boolean).join(", ") || null,
+    videoForm: classifyVideoForm({ title: act.title, body: bodyText, videoLength }),
+    aiVideo: classifyAiVideo({ title: act.title, topic: topicFromBody, body: bodyText }),
     videoLength,
     submitMethod: submitMethodFromBody ?? (applyTypes.map((t) => t.name).filter(Boolean).join(", ") || null),
     postSelectionDuty: null,

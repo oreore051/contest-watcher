@@ -8,6 +8,8 @@ import {
   extractSubmitMethod,
   extractMaxPrizeFromBody,
   extractTopic,
+  classifyVideoForm,
+  classifyAiVideo,
   parseKRW,
 } from "./extract.js";
 
@@ -94,7 +96,6 @@ export async function fetchDetail(ix: string): Promise<Contest> {
     parseKRW(info["총 상금"]) ??
     null;
 
-  const formatFromSite = info["분야"] || null;
   const eligibility = info["응모대상"] ? `대상: ${info["응모대상"]}` : null;
   const homepage = info["홈페이지URL"] || null;
 
@@ -117,7 +118,8 @@ export async function fetchDetail(ix: string): Promise<Contest> {
     prizeScale,
     eligibility,
     topic: topicFromBody,
-    format: formatFromSite,
+    videoForm: classifyVideoForm({ title, body: bodyText, videoLength }),
+    aiVideo: classifyAiVideo({ title, topic: topicFromBody, body: bodyText }),
     videoLength,
     submitMethod,
     postSelectionDuty: null,
