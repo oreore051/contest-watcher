@@ -188,6 +188,7 @@ async function main() {
   let skipped_nonContest = 0;
   let skipped_nonVideo = 0;
   let skipped_old = 0;
+  let skipped_dupe = 0;
   let failed = 0;
   const today = new Date().toISOString().slice(0, 10);
   for (const cand of targets) {
@@ -231,6 +232,11 @@ async function main() {
       }
 
       const r = await upsertContest(notion, dbId, contest);
+      if (r.skipped === "cross-source") {
+        skipped_dupe++;
+        console.log(`  → ⏭️  스킵 (cross-source 중복 — 동일 제목+마감일 다른 사이트에 이미 등록)`);
+        continue;
+      }
       if (r.created) created++;
       else updated++;
       console.log(`  → raw ${r.created ? "created" : "updated"}`);
@@ -240,8 +246,12 @@ async function main() {
         const score = scoreContest(contest);
         if (isRecommended(score)) {
           const rr = await syncRecommended(notion, recDbId, contest, score);
-          recommended++;
-          console.log(`  → ⭐ recommended ${score.total}점 ${rr.created ? "created" : "updated"}: ${score.reasons.slice(0, 3).join(" · ")}`);
+          if (rr.skipped === "cross-source") {
+            console.log(`  → ⏭️  추천 스킵 (cross-source 중복)`);
+          } else {
+            recommended++;
+            console.log(`  → ⭐ recommended ${score.total}점 ${rr.created ? "created" : "updated"}: ${score.reasons.slice(0, 3).join(" · ")}`);
+          }
         } else {
           console.log(`  → 추천 X (${score.total}점)`);
         }
@@ -252,7 +262,7 @@ async function main() {
     }
   }
   console.log(
-    `\n✅ 완료 — created ${created} / updated ${updated} / ⭐ recommended ${recommended} / 마감지남 ${skipped_old} / 비공모전 ${skipped_nonContest} / 비영상 ${skipped_nonVideo} / failed ${failed}`,
+    `\n✅ 완료 — created ${created} / updated ${updated} / ⭐ recommended ${recommended} / 마감지남 ${skipped_old} / 비공모전 ${skipped_nonContest} / 비영상 ${skipped_nonVideo} / 중복 ${skipped_dupe} / failed ${failed}`,
   );
 
   // ⭐관심 체크된 공모전 → "일정" DB로 sync

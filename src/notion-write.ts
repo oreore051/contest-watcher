@@ -202,6 +202,33 @@ export async function findByUrl(notion: Client, dbId: string, url: string): Prom
 }
 
 /**
+ * 동일 (제목 + 마감일) cross-source 중복 매칭.
+ * URL 다르더라도 같은 공모전이 여러 사이트에 게재된 경우 dedup용.
+ */
+export async function findCrossSourceMatch(
+  notion: Client,
+  dbId: string,
+  title: string,
+  closeAt: string,
+): Promise<string | null> {
+  if (!title || !closeAt) return null;
+  const res: any = await notion.databases.query({
+    database_id: dbId,
+    filter: {
+      and: [
+        { property: "제목", title: { equals: title } },
+        { property: "마감일", date: { equals: closeAt } },
+      ],
+    },
+    page_size: 1,
+  });
+  const p = res.results[0];
+  if (!p) return null;
+  if (p.in_trash || p.archived) return null;
+  return p.id;
+}
+
+/**
  * 시상 정보가 전혀 없으면 (상금 null + 시상규모 빈값) 공모전 아닐 가능성 큼.
  * 봉사단 모집·교육 프로그램·서포터즈 등 차단.
  */
@@ -225,7 +252,7 @@ export async function syncRecommended(
   recDbId: string,
   c: Contest,
   score: Score,
-): Promise<{ id: string; created: boolean }> {
+): Promise<{ id: string; created: boolean; skipped?: "cross-source" }> {
   const properties = contestToProperties(c);
   properties["추천 점수"] = { number: score.total };
   properties["추천 사유"] = {
@@ -239,6 +266,11 @@ export async function syncRecommended(
   if (existing) {
     await notion.pages.update({ page_id: existing, properties, cover, icon });
     return { id: existing, created: false };
+  }
+  // cross-source 중복 가드 — 동일 (제목+마감일) 다른 URL이 이미 있으면 스킵 (먼저 등록된 게 canonical)
+  if (c.title && c.closeAt) {
+    const xMatch = await findCrossSourceMatch(notion, recDbId, c.title, c.closeAt);
+    if (xMatch) return { id: xMatch, created: false, skipped: "cross-source" };
   }
   const page = await notion.pages.create({
     parent: { database_id: recDbId },
@@ -260,7 +292,11 @@ function emojiIcon(emoji: string): any {
   return { type: "emoji", emoji };
 }
 
-export async function upsertContest(notion: Client, dbId: string, c: Contest): Promise<{ id: string; created: boolean }> {
+export async function upsertContest(
+  notion: Client,
+  dbId: string,
+  c: Contest,
+): Promise<{ id: string; created: boolean; skipped?: "cross-source" }> {
   const properties = contestToProperties(c);
   const cover = buildCover(c);
   const icon = emojiIcon("🎬");
@@ -268,6 +304,11 @@ export async function upsertContest(notion: Client, dbId: string, c: Contest): P
   if (existing) {
     await notion.pages.update({ page_id: existing, properties, cover, icon });
     return { id: existing, created: false };
+  }
+  // cross-source 중복 가드 — 동일 (제목+마감일) 다른 URL이 이미 있으면 스킵
+  if (c.title && c.closeAt) {
+    const xMatch = await findCrossSourceMatch(notion, dbId, c.title, c.closeAt);
+    if (xMatch) return { id: xMatch, created: false, skipped: "cross-source" };
   }
   const children = buildBodyChildren(c.detailText);
   const page = await notion.pages.create({
